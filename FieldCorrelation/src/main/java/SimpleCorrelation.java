@@ -22,8 +22,9 @@ public class SimpleCorrelation {
 
 				public Vector call(String pairLine) throws Exception {
 					
-					String[] values = pairLine.split(",");
-					Vector outVec = Vectors.dense(Double.parseDouble(values[0]), Double.parseDouble(values[1]));
+					String[] stringValues = pairLine.split(",");
+					double[] values = parseDoubles(stringValues);
+					Vector outVec = Vectors.dense(values);
 					return outVec;
 				}
     			
@@ -31,5 +32,13 @@ public class SimpleCorrelation {
     
     Matrix correlationVal = Statistics.corr(pairData.rdd(), "pearson");
     System.out.println("Correlation Matrix: \n" + correlationVal.toString());
+  }
+  
+  private static double[] parseDoubles(String[] inVals) {
+	double[] nums = new double[inVals.length];
+	for (int i = 0; i < nums.length; i++) {
+		nums[i] = Double.parseDouble(inVals[i]);
+	}
+	return nums;
   }
 }
