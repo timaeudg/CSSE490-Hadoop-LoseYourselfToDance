@@ -58,9 +58,6 @@ public final class RandomCluster {
         int maxIterations = 41;
         for (int clusters = 2; clusters <= maxClusters ; clusters++) {
             for (int iterations = 1; iterations <= maxIterations ; iterations += 10) {
-                System.out.println("\n\nCurrently at: ");
-                System.out.println("clusters: " + clusters);
-                System.out.println("iterations : " + iterations + "\n\n");
                 KMeansModel clusteredModel = KMeans.train(randomRDD.rdd(), clusters, iterations);
                 
                 double WSSSE = clusteredModel.computeCost(randomRDD.rdd());
