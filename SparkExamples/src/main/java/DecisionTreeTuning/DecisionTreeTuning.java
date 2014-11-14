@@ -1,0 +1,107 @@
+package DecisionTreeTuning;
+
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+import java.util.HashMap;
+import java.util.List;
+
+import scala.Tuple2;
+
+import org.apache.spark.api.java.function.Function2;
+import org.apache.spark.api.java.JavaPairRDD;
+import org.apache.spark.api.java.JavaRDD;
+import org.apache.spark.api.java.JavaSparkContext;
+import org.apache.spark.api.java.function.Function;
+import org.apache.spark.api.java.function.PairFunction;
+import org.apache.spark.mllib.regression.LabeledPoint;
+import org.apache.spark.mllib.tree.DecisionTree;
+import org.apache.spark.mllib.tree.model.DecisionTreeModel;
+import org.apache.spark.mllib.util.MLUtils;
+import org.apache.spark.SparkConf;
+
+import com.clearspring.analytics.util.Lists;
+
+/**
+ * Classification and regression using decision trees.
+ */
+public final class DecisionTreeTuning {
+
+    public static void main(String[] args) {
+        if (args.length != 1) {
+            System.err.println("Usage: JavaDecisionTree <libsvm format data file>");
+            System.exit(1);
+        }
+        String datapath = args[0];
+        SparkConf sparkConf = new SparkConf().setAppName("JavaDecisionTree");
+        JavaSparkContext sc = new JavaSparkContext(sparkConf);
+
+        // Load and parse the data file.
+        // Cache the data since we will use it again to compute training error.
+        JavaRDD<LabeledPoint> data = MLUtils.loadLibSVMFile(sc.sc(), datapath).toJavaRDD().cache();
+        DecisionTreeConfig bestConfig = null;
+
+        List<String> impurities = Lists.newArrayList();
+        impurities.add("gini");
+        impurities.add("entropy");
+
+        // Set parameters.
+        // Empty categoricalFeaturesInfo indicates all features are continuous.
+        Integer maxClasses = 7;
+        Integer maxDepth = 5;
+        Integer maxBins = 100;
+
+        for (int numClasses = 2; numClasses < maxClasses; numClasses++) {
+            for (String impurityFunction : impurities) {
+                HashMap<Integer, Integer> categoricalFeaturesInfo = new HashMap<Integer, Integer>();
+                // Train a DecisionTree model for classification.
+                final DecisionTreeModel model = DecisionTree.trainClassifier(data, numClasses, categoricalFeaturesInfo,
+                        impurityFunction, maxDepth, maxBins);
+
+                // Evaluate model on training instances and compute training
+                // error
+                JavaPairRDD<Double, Double> predictionAndLabel = data
+                        .mapToPair(new PairFunction<LabeledPoint, Double, Double>() {
+
+                            public Tuple2<Double, Double> call(LabeledPoint p) throws Exception {
+                                return new Tuple2<Double, Double>(model.predict(p.features()), p.label());
+                            }
+
+                        });
+                Double trainErr = 1.0 * predictionAndLabel.filter(new Function<Tuple2<Double, Double>, Boolean>() {
+                    public Boolean call(Tuple2<Double, Double> pl) throws Exception {
+                        return !pl._1().equals(pl._2());
+                    }
+                }).count() / data.count();
+
+                DecisionTreeConfig config = new DecisionTreeConfig(model, maxBins, maxDepth, impurityFunction,
+                        numClasses, trainErr);
+
+                if (bestConfig == null || config.hasLessError(bestConfig)) {
+                    bestConfig = config;
+                }
+            }
+        }
+
+        System.out.println("Best configuration\n=========================\n");
+        if (bestConfig == null) {
+            System.out.println("BEST CONFIG IS NULL?!?! WAT?");
+        } else {
+            System.out.println(bestConfig.toString());
+        }
+    }
+}
